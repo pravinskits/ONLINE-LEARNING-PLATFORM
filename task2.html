@@ -1,0 +1,68 @@
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
+mongoose.connect('mongodb://localhost:27017/edu-platform');
+
+const User = mongoose.model('User', new mongoose.Schema({
+  username: String,
+  password: String,
+  progress: Object,
+}));
+
+const Video = mongoose.model('Video', new mongoose.Schema({
+  title: String,
+  url: String,
+  description: String
+}));
+
+const Quiz = mongoose.model('Quiz', new mongoose.Schema({
+  videoId: String,
+  questions: Array
+}));
+
+// Auth - Register
+app.post('/register', async (req, res) => {
+  const hashed = await bcrypt.hash(req.body.password, 8);
+  const user = new User({ username: req.body.username, password: hashed });
+  await user.save();
+  res.send({ message: 'Registered' });
+});
+
+// Auth - Login
+app.post('/login', async (req, res) => {
+  const user = await User.findOne({ username: req.body.username });
+  const valid = user && await bcrypt.compare(req.body.password, user.password);
+  if (!valid) return res.status(401).send({ error: 'Invalid' });
+  const token = jwt.sign({ id: user._id }, 'secret');
+  res.send({ token });
+});
+
+// Get Videos
+app.get('/videos', async (req, res) => {
+  const videos = await Video.find();
+  res.send(videos);
+});
+
+// Get Quiz for Video
+app.get('/quiz/:videoId', async (req, res) => {
+  const quiz = await Quiz.findOne({ videoId: req.params.videoId });
+  res.send(quiz);
+});
+
+// Update User Progress
+app.post('/progress', async (req, res) => {
+  const token = req.headers.authorization;
+  if (!token) return res.status(403).send({ error: 'No token' });
+  const decoded = jwt.verify(token, 'secret');
+  await User.findByIdAndUpdate(decoded.id, { progress: req.body.progress });
+  res.send({ message: 'Progress updated' });
+});
+
+app.listen(3000, () => console.log('Server started on http://localhost:3000'));
